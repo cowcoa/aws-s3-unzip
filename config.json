@@ -1,0 +1,10 @@
+{
+    "Mail":
+    {
+        "Source": "cowcoa@gmail.com",
+        "Destination": [
+            "zxaws@gmail.com",
+            "crtapps@gmail.com"
+        ]
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "event_handlers",
+  "version": "1.0.0",
+  "description": "Handle events triggered by AWS services.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "adm-zip": "^0.4.13",
+    "iconv-lite": "^0.4.24",
+    "moment-timezone": "^0.5.21"
+  }
+}
