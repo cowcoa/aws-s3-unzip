@@ -1,23 +1,12 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >
-  Automatically decompress zip file from SRC s3 bucket and sync the unzipped files to DST s3 bucket.
+  Automatically decompress zip files from SRC s3 bucket and sync the unzipped files to DST s3 bucket.
 Parameters:
-  ResourceNamePrefix:
-    Description: >
-      Resource name in this template should be prefixed with this.
+  Prefix:
+    Default: 'poc'
     Type: String
-    MinLength: 8
-    MaxLength: 32
-    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
-    Default: dev
-  ResourceNameSuffix:
     Description: >
-      Resource name in this template should be suffixed with this.
-    Type: String
-    MinLength: 8
-    MaxLength: 32
-    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
-    Default: zxaws
+      Resource name in this template should be prefixed with this word.
   SrcBucketName:
     Description: >
       S3 bucket holding the zip files that need to be uploaded.
@@ -25,55 +14,127 @@ Parameters:
     MinLength: 8
     MaxLength: 32
     AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
-    Default: poc-src-us-east-1
+    Default: poc-zxaws-ab-mirror-us-east-1
   DstBucketName:
     Description: >
-      S3 bucket holding the zip files that need to be uploaded.
+      S3 bucket holding the unzipped files that synced by UnzipLambda.
     Type: String
     MinLength: 8
     MaxLength: 32
     AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
-    Default: poc-src-us-east-1
-  PatchBucketName:
-    Description: >
-      S3 bucket name of zxaws AB3 demo zipped patch.
-    Type: String
-    MinLength: 8
-    MaxLength: 32
-    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
-    Default: zxaws-ab-us-east-1
+    Default: poc-zxaws-ab-us-east-1
 Resources:
-  UnzipPatch:
-    Type: 'AWS::Lambda::Function'
+  UnzipLambdaRole:
+    Type: 'AWS::IAM::Role'
     Properties:
-      FunctionName: !Join ['-', [!Ref ResourceNamePrefix, 'UnzipPatch']]
-      Description: ''
+      RoleName: !Join ['-', [!Ref Prefix, 'UnzipLambda', !Ref 'AWS::Region']]
+      Description: >
+        'Role for executing unzip lambda function.'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
+      Policies:
+        - PolicyName: 'S3Policies'
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: 'SrcBucketPolicy'
+                Effect: Allow
+                Action: '*'
+                Resource: 
+                  - !Join ['/', [!Join [':::', ['arn:aws:s3', !Ref SrcBucketName]], '*']]
+              - Sid: 'DstBucketPolicy'
+                Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:PutObjectAcl'
+                Resource: 
+                  - !Join ['/', [!Join [':::', ['arn:aws:s3', !Ref DstBucketName]], '*']]
+  UnzipLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: UnzipLambdaRole
+    Properties:
+      FunctionName: !Join ['-', [!Ref Prefix, 'unzip-file']]
+      Description: >
+        'Lambda function for unzipping files.'
       MemorySize: 128
-      Handler: unzip-patch/index.handler
-      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/ZXAWSomeBuilder'
+      Handler: unzip-file/index.handler
+      Role: !GetAtt UnzipLambdaRole.Arn
       Timeout: 20
       Runtime: nodejs12.x
-      ReservedConcurrentExecutions: 1
+      ReservedConcurrentExecutions: 10
       Environment:
         Variables:
-          S3_BUCKET_PATCH: !Ref PatchBucketName
-  UnzipPatchPermission:
-    Type: 'AWS::Lambda::Permission'
+          S3_BUCKET_DST: !Ref DstBucketName
+  UnzipLambdaPermission:
+    Type: AWS::Lambda::Permission
     Properties:
       Action: 'lambda:InvokeFunction'
       SourceAccount: !Ref AWS::AccountId
-      FunctionName: !Ref UnzipPatch
+      FunctionName: !Ref UnzipLambda
       Principal: s3.amazonaws.com
-  UploadImageBucketDev:
+  # Create s3 bucket in the same AWS Region where you create the AWS CloudFormation stack.
+  SrcS3Bucket:
     Type: AWS::S3::Bucket
-    DependsOn: CropImage
+    DependsOn: UnzipLambda
     Properties:
-      BucketName: !Join ['-', [!Ref UploadImageBucketName, 'dev']]
+      BucketName: !Ref SrcBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       AccelerateConfiguration:
         AccelerationStatus: 'Enabled'
-#        AccelerationStatus: 'Suspended'
       NotificationConfiguration:
         LambdaConfigurations:
           -
-            Function: !GetAtt CropImage.Arn
+            Function: !GetAtt UnzipLambda.Arn
             Event: "s3:ObjectCreated:*"
+  DstS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DstBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+  DstS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: UnzipLambdaRole
+    Properties:
+      Bucket: !Ref DstS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              'AWS':
+                - !GetAtt UnzipLambdaRole.Arn
+            Action:
+              - 's3:PutObject'
+              - 's3:PutObjectAcl'
+            Resource: 
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref DstBucketName
+                  - '/*'
+            Condition:
+              StringEquals: 
+                's3:x-amz-acl':
+                  - 'bucket-owner-full-control'
