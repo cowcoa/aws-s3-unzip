@@ -23,6 +23,17 @@ Parameters:
     MaxLength: 32
     AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
     Default: poc-zxaws-ab-us-east-1
+  EnableSES:
+    Default: 'false'
+    Type: String
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >
+      Whether to send e-mail after file sync.
+Conditions:
+  UseSES:
+    !Not [!Equals [!Ref EnableSES, 'false']]
 Resources:
   UnzipLambdaRole:
     Type: 'AWS::IAM::Role'
@@ -52,14 +63,22 @@ Resources:
                 Effect: Allow
                 Action: '*'
                 Resource: 
-                  - !Join ['/', [!Join [':::', ['arn:aws:s3', !Ref SrcBucketName]], '*']]
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join ['-', [!Ref SrcBucketName, !Select [0, !Split ['-', !Select [2, !Split ['/', !Ref 'AWS::StackId']]]]]]
+                      - '/*'
               - Sid: 'DstBucketPolicy'
                 Effect: Allow
                 Action:
                   - 's3:PutObject'
                   - 's3:PutObjectAcl'
                 Resource: 
-                  - !Join ['/', [!Join [':::', ['arn:aws:s3', !Ref DstBucketName]], '*']]
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join ['-', [!Ref DstBucketName, !Select [0, !Split ['-', !Select [2, !Split ['/', !Ref 'AWS::StackId']]]]]]
+                      - '/*'
   UnzipLambda:
     Type: AWS::Lambda::Function
     DependsOn: UnzipLambdaRole
@@ -75,7 +94,8 @@ Resources:
       ReservedConcurrentExecutions: 10
       Environment:
         Variables:
-          S3_BUCKET_DST: !Ref DstBucketName
+          S3_BUCKET_DST: !Join ['-', [!Ref DstBucketName, !Select [0, !Split ['-', !Select [2, !Split ['/', !Ref 'AWS::StackId']]]]]]
+          SEND_EMAIL: !If [UseSES, true, false]
   UnzipLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -86,9 +106,21 @@ Resources:
   # Create s3 bucket in the same AWS Region where you create the AWS CloudFormation stack.
   SrcS3Bucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     DependsOn: UnzipLambda
     Properties:
-      BucketName: !Ref SrcBucketName
+      BucketName: !Join
+        - "-"
+        - - !Ref SrcBucketName
+          - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Select
+                - 2
+                - !Split
+                  - "/"
+                  - !Ref "AWS::StackId"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -103,8 +135,20 @@ Resources:
             Event: "s3:ObjectCreated:*"
   DstS3Bucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
-      BucketName: !Ref DstBucketName
+      BucketName: !Join
+        - "-"
+        - - !Ref DstBucketName
+          - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Select
+                - 2
+                - !Split
+                  - "/"
+                  - !Ref "AWS::StackId"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -132,7 +176,7 @@ Resources:
               - !Join
                 - ''
                 - - 'arn:aws:s3:::'
-                  - !Ref DstBucketName
+                  - !Join ['-', [!Ref DstBucketName, !Select [0, !Split ['-', !Select [2, !Split ['/', !Ref 'AWS::StackId']]]]]]
                   - '/*'
             Condition:
               StringEquals: 

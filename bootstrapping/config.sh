@@ -13,5 +13,7 @@ s3_deployment_bucket="$project_name-deployment-$deployment_region"
 s3_src_bucket="$project_name-src-$deployment_region"
 # S3 bucket holding the unzipped files that synced by UnzipLambda.
 s3_dst_bucket="$project_name-dst-$deployment_region"
+# Whether to send e-mail after file sync.
+ses_enable="false"
 
 echo "config.sh imported."

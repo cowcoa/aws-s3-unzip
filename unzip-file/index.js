@@ -12,6 +12,7 @@ const path = require('path');
 const s3 = new AWS.S3();
 const ses = new AWS.SES();
 const patchBucket = process.env['S3_BUCKET_DST'];
+const sendEmail = process.env['SEND_EMAIL'];
 
 function getObject(bucket, objectKey) {
     return new Promise((resolve, reject) => {
@@ -87,43 +88,45 @@ exports.handler = function(event, context, callback) {
 
         // Waiting for all promises complete.
         Promise.all(promises).then(() => {
-            // Nofity Dev/Ops the result of patch deploment.
-            // Generate deployment date, use +8 timezone for testing.
-            let currentTime = moment().tz("Asia/Shanghai");
-            let deployDate = currentTime.format();
-            var params = {
-                Destination: {
-                    ToAddresses: [
-                        'zxaws@amazon.com'
-                    ]
-                },
-                Message: {
-                    Body: {
-                        Html: {
-                            Charset: "UTF-8",
-                            Data: 'Patch ' + versionId + ':' + resourceVersionId + ' sync complete at ' + deployDate + '.'
+            if (sendEmail == true) {
+                // Nofity Dev/Ops the result of patch deploment.
+                // Generate deployment date, use +8 timezone for testing.
+                let currentTime = moment().tz("Asia/Shanghai");
+                let deployDate = currentTime.format();
+                var params = {
+                    Destination: {
+                        ToAddresses: [
+                            'zxaws@amazon.com'
+                        ]
+                    },
+                    Message: {
+                        Body: {
+                            Html: {
+                                Charset: "UTF-8",
+                                Data: 'Patch ' + versionId + ':' + resourceVersionId + ' sync complete at ' + deployDate + '.'
+                            },
+                            Text: {
+                                Charset: "UTF-8",
+                                Data: 'Patch ' + versionId + ':' + resourceVersionId + ' sync complete at ' + deployDate + '.'
+                            }
                         },
-                        Text: {
-                            Charset: "UTF-8",
-                            Data: 'Patch ' + versionId + ':' + resourceVersionId + ' sync complete at ' + deployDate + '.'
+                        Subject: {
+                            Charset: 'UTF-8',
+                            Data: 'Patch ' + versionId + ':' + resourceVersionId + ' Deployment Notification'
                         }
                     },
-                    Subject: {
-                        Charset: 'UTF-8',
-                        Data: 'Patch ' + versionId + ':' + resourceVersionId + ' Deployment Notification'
+                    Source: 'cowcoa@gmail.com'
+                };
+                
+                console.log("Send a notification to mailbox: z***s@amazon.com");
+                ses.sendEmail(params, (err, data) => {
+                    if (err) {
+                        console.log(err, err.stack);
+                    } else {
+                        console.log('Email sent successfully');
                     }
-                },
-                Source: 'cowcoa@gmail.com'
-            };
-            
-            console.log("Send a notification to mailbox: z***s@amazon.com");
-            ses.sendEmail(params, (err, data) => {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    console.log('Email sent successfully');
-                }
-            });
+                });
+            }
             
             callback(null, "OK");
             

@@ -73,7 +73,8 @@ aws cloudformation create-change-set \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --parameters ParameterKey="Prefix",ParameterValue=$project_name \
                ParameterKey="SrcBucketName",ParameterValue=$s3_src_bucket \
-               ParameterKey="DstBucketName",ParameterValue=$s3_dst_bucket
+               ParameterKey="DstBucketName",ParameterValue=$s3_dst_bucket \
+               ParameterKey="EnableSES",ParameterValue=$ses_enable
 
 result=$?
 
