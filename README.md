@@ -1,4 +1,5 @@
 # Unzip file on S3
+![alt text](../master/architecture_diagram.png?raw=true)
 
 # Introduction  
 
